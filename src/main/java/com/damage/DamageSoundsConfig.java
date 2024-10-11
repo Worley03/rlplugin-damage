@@ -1,17 +1,20 @@
+package com.damage;
+
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 
-@ConfigGroup("example")
+@ConfigGroup("damagesounds")
 public interface DamageSoundsConfig extends Config
 {
 	@ConfigItem(
-		keyName = "greeting",
-		name = "Welcome Greeting",
-		description = "The message to show to the user when they login"
+			keyName = "volume",
+			name = "Volume",
+			description = "Adjust the volume of the sounds.",
+			position = 1
 	)
-	default String greeting()
+	default int volume()
 	{
-		return "Hello";
+		return 100; // Default volume is 100%
 	}
 }

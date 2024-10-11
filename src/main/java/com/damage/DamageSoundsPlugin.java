@@ -2,12 +2,12 @@ package com.damage;
 
 import com.google.inject.Provides;
 import net.runelite.api.Client;
-import net.runelite.api.events.HitsplatApplied;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
+
 import javax.inject.Inject;
 import javax.sound.sampled.*;
 import java.io.BufferedInputStream;
@@ -26,10 +26,22 @@ public class DamageSoundsPlugin extends Plugin
 	@Inject
 	private OverlayManager overlayManager;
 
+	@Inject
+	private DamageSoundsConfig config;
+
+	@Inject
+	private ConfigManager configManager;
+
 	@Override
 	protected void startUp() throws Exception
 	{
 		// Initialization code if needed
+	}
+
+	@Provides
+	DamageSoundsConfig provideConfig(ConfigManager configManager)
+	{
+		return configManager.getConfig(DamageSoundsConfig.class);
 	}
 
 	@Override
@@ -39,7 +51,7 @@ public class DamageSoundsPlugin extends Plugin
 	}
 
 	@Subscribe
-	public void onHitsplatApplied(HitsplatApplied event)
+	public void onHitsplatApplied(net.runelite.api.events.HitsplatApplied event)
 	{
 		if (event.getActor() == client.getLocalPlayer())
 		{
@@ -48,16 +60,16 @@ public class DamageSoundsPlugin extends Plugin
 			// Check the damage amount and play the appropriate sound
 			if (damage >= 30)
 			{
-				playCustomSound("bigdamage.wav");
+				playCustomSound("bigdamage.wav", config.volume());
 			}
 			else if (damage >= 10)
 			{
-				playCustomSound("littledamage.wav");
+				playCustomSound("littledamage.wav", config.volume());
 			}
 		}
 	}
 
-	private void playCustomSound(String soundFileName)
+	private void playCustomSound(String soundFileName, int volume)
 	{
 		try
 		{
@@ -69,6 +81,11 @@ public class DamageSoundsPlugin extends Plugin
 			// Get a sound clip resource
 			Clip clip = AudioSystem.getClip();
 			clip.open(audioStream);
+
+			// Set volume
+			FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+			float volumeAdjustment = 20f * (float) Math.log10(volume / 100.0);
+			gainControl.setValue(volumeAdjustment);
 
 			// Play the sound
 			clip.start();
