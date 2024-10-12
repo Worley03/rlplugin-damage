@@ -8,7 +8,6 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.ui.overlay.OverlayManager;
 
 import javax.inject.Inject;
 import javax.sound.sampled.*;
@@ -27,32 +26,31 @@ import java.util.Map;
 		tags = {"combat", "sound", "damage"}
 )
 public class DamageSoundsPlugin extends Plugin {
+
 	@Inject
 	private Client client;
 
 	@Inject
-	private OverlayManager overlayManager;
-
-	@Inject
 	private DamageSoundsConfig config;
 
-	@Inject
-	private ConfigManager configManager;
-
+	// Map to store sound files with their corresponding damage thresholds
 	private Map<String, Integer> soundMap = new HashMap<>();
 
 	@Override
 	protected void startUp() throws Exception {
-		// Check and create the damagesounds directory if it does not exist
+		// Define path for the damagesounds directory in the user's RuneLite folder
 		Path damagesoundsDir = Paths.get(System.getProperty("user.home"), ".runelite", "damagesounds");
+
+		// Create directory if it doesn't exist
 		if (!java.nio.file.Files.exists(damagesoundsDir)) {
 			java.nio.file.Files.createDirectories(damagesoundsDir);
 			System.out.println("Created damagesounds directory: " + damagesoundsDir.toString());
 		}
 
-		// Parse sound files initially
+		// Parse sound files from the config into the sound map
 		soundMap = parseSoundFiles(config.soundFiles());
 	}
+
 	@Provides
 	DamageSoundsConfig provideConfig(ConfigManager configManager) {
 		return configManager.getConfig(DamageSoundsConfig.class);
@@ -60,17 +58,19 @@ public class DamageSoundsPlugin extends Plugin {
 
 	@Override
 	protected void shutDown() throws Exception {
-		// Cleanup code if needed
+		// Any shutdown or cleanup logic if necessary
 	}
 
+	// Listener for config changes related to sound files
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event) {
 		if (event.getGroup().equals("damagesounds") && event.getKey().equals("soundFiles")) {
 			System.out.println("Sound files config changed, reloading sound mappings.");
-			soundMap = parseSoundFiles(config.soundFiles()); // Update sound mappings
+			soundMap = parseSoundFiles(config.soundFiles());
 		}
 	}
 
+	// Listener for damage events (HitsplatApplied)
 	@Subscribe
 	public void onHitsplatApplied(HitsplatApplied event) {
 		if (event.getActor() == client.getLocalPlayer()) {
@@ -79,32 +79,33 @@ public class DamageSoundsPlugin extends Plugin {
 		}
 	}
 
+	// Play the sound that corresponds to the damage amount
 	private void playSoundForDamage(int damage) {
-		String selectedSound = null;
-		int highestThreshold = -1; // Keep track of the highest matching threshold
+		String matchingSound = null;
+		int highestThreshold = -1;
 
-		// Iterate over soundMap and find the highest matching threshold
+		// Find the highest threshold that matches the damage
 		for (Map.Entry<String, Integer> entry : soundMap.entrySet()) {
 			int threshold = entry.getValue();
 			if (damage >= threshold && threshold > highestThreshold) {
-				selectedSound = entry.getKey();
+				matchingSound = entry.getKey();
 				highestThreshold = threshold;
 			}
 		}
 
-		// Play the sound with the highest threshold
-		if (selectedSound != null) {
-			playCustomSound(selectedSound, config.volume());
+		// Play the corresponding sound, if found
+		if (matchingSound != null) {
+			playCustomSound(matchingSound, config.volume());
 		} else {
 			System.out.println("No matching sound found for damage: " + damage);
 		}
 	}
 
-
+	// Parse the sound file mappings from config (format: "soundFileName:damageThreshold")
 	private Map<String, Integer> parseSoundFiles(String soundFiles) {
 		Map<String, Integer> soundMap = new HashMap<>();
-
 		String[] pairs = soundFiles.split(",");
+
 		for (String pair : pairs) {
 			String[] parts = pair.split(":");
 			if (parts.length == 2) {
@@ -117,23 +118,24 @@ public class DamageSoundsPlugin extends Plugin {
 		return soundMap;
 	}
 
+	// Plays a custom sound file based on its name and the configured volume
 	private void playCustomSound(String soundFileName, int volume) {
 		try {
-			// First, check the .runelite directory for the custom sound
+			// First, try to find the custom sound in the user's damagesounds directory
 			Path customSoundPath = Paths.get(System.getProperty("user.home"), ".runelite", "damagesounds", soundFileName);
 			File customSoundFile = customSoundPath.toFile();
 
 			System.out.println("Looking for custom sound file: " + customSoundFile.getAbsolutePath());
 
 			if (customSoundFile.exists()) {
-				// If the custom sound exists, play it
+				// Play the custom sound file if found
 				playClip(AudioSystem.getAudioInputStream(customSoundFile), volume);
 			} else {
-				// If custom sound is not found, try to load the default sound from the JAR
+				// If the custom sound isn't found, try to load a default sound from the plugin's JAR
 				InputStream audioSrc = getClass().getResourceAsStream("/" + soundFileName);
 				if (audioSrc != null) {
 					InputStream bufferedIn = new BufferedInputStream(audioSrc);
-					playClip(AudioSystem.getAudioInputStream(bufferedIn), volume); // Play sound from the JAR
+					playClip(AudioSystem.getAudioInputStream(bufferedIn), volume);
 				} else {
 					System.out.println("Sound file not found in JAR or custom directory: " + soundFileName);
 				}
@@ -143,16 +145,17 @@ public class DamageSoundsPlugin extends Plugin {
 		}
 	}
 
-
+	// Play an audio clip with the specified volume
 	private void playClip(AudioInputStream audioStream, int volume) throws LineUnavailableException, IOException, UnsupportedAudioFileException {
 		Clip clip = AudioSystem.getClip();
 		clip.open(audioStream);
 
-		// Set volume
+		// Adjust volume
 		FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
 		float volumeAdjustment = 20f * (float) Math.log10(volume / 100.0);
 		gainControl.setValue(volumeAdjustment);
 
+		// Start playing the sound
 		clip.start();
 	}
 }
