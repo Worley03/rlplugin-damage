@@ -20,11 +20,14 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 
+import lombok.extern.slf4j.Slf4j;
+
 @PluginDescriptor(
 		name = "Damage Sounds",
 		description = "Plays custom sounds based on the damage you take.",
 		tags = {"combat", "sound", "damage"}
 )
+@Slf4j
 public class DamageSoundsPlugin extends Plugin {
 
 	@Inject
@@ -36,6 +39,9 @@ public class DamageSoundsPlugin extends Plugin {
 	// Map to store sound files with their corresponding damage thresholds
 	private Map<String, Integer> soundMap = new HashMap<>();
 
+	// Reference to the last played Clip to close it before playing a new one
+	private Clip lastClip;
+
 	@Override
 	protected void startUp() throws Exception {
 		// Define path for the damagesounds directory in the user's RuneLite folder
@@ -44,7 +50,7 @@ public class DamageSoundsPlugin extends Plugin {
 		// Create directory if it doesn't exist
 		if (!java.nio.file.Files.exists(damagesoundsDir)) {
 			java.nio.file.Files.createDirectories(damagesoundsDir);
-			System.out.println("Created damagesounds directory: " + damagesoundsDir.toString());
+			log.debug("Created damagesounds directory: {}", damagesoundsDir);
 		}
 
 		// Parse sound files from the config into the sound map
@@ -58,14 +64,15 @@ public class DamageSoundsPlugin extends Plugin {
 
 	@Override
 	protected void shutDown() throws Exception {
-		// Any shutdown or cleanup logic if necessary
+		// Close the last played Clip on shutdown
+		closeLastClip();
 	}
 
 	// Listener for config changes related to sound files
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event) {
 		if (event.getGroup().equals("damagesounds") && event.getKey().equals("soundFiles")) {
-			System.out.println("Sound files config changed, reloading sound mappings.");
+			log.debug("Sound files config changed, reloading sound mappings.");
 			soundMap = parseSoundFiles(config.soundFiles());
 		}
 	}
@@ -97,7 +104,7 @@ public class DamageSoundsPlugin extends Plugin {
 		if (matchingSound != null) {
 			playCustomSound(matchingSound, config.volume());
 		} else {
-			System.out.println("No matching sound found for damage: " + damage);
+			log.debug("No matching sound found for damage: {}", damage);
 		}
 	}
 
@@ -125,7 +132,7 @@ public class DamageSoundsPlugin extends Plugin {
 			Path customSoundPath = Paths.get(System.getProperty("user.home"), ".runelite", "damagesounds", soundFileName);
 			File customSoundFile = customSoundPath.toFile();
 
-			System.out.println("Looking for custom sound file: " + customSoundFile.getAbsolutePath());
+			log.debug("Looking for custom sound file: {}", customSoundFile.getAbsolutePath());
 
 			if (customSoundFile.exists()) {
 				// Play the custom sound file if found
@@ -137,16 +144,18 @@ public class DamageSoundsPlugin extends Plugin {
 					InputStream bufferedIn = new BufferedInputStream(audioSrc);
 					playClip(AudioSystem.getAudioInputStream(bufferedIn), volume);
 				} else {
-					System.out.println("Sound file not found in JAR or custom directory: " + soundFileName);
+					log.debug("Sound file not found in JAR or custom directory: {}", soundFileName);
 				}
 			}
 		} catch (Exception e) {
-			e.printStackTrace();
+			log.error("Error playing sound: {}", soundFileName, e);
 		}
 	}
 
 	// Play an audio clip with the specified volume
 	private void playClip(AudioInputStream audioStream, int volume) throws LineUnavailableException, IOException, UnsupportedAudioFileException {
+		closeLastClip(); // Close the previous clip if it is still open
+
 		Clip clip = AudioSystem.getClip();
 		clip.open(audioStream);
 
@@ -157,5 +166,14 @@ public class DamageSoundsPlugin extends Plugin {
 
 		// Start playing the sound
 		clip.start();
+		lastClip = clip; // Store the reference to the current clip
+	}
+
+	// Close the last played Clip to free resources
+	private void closeLastClip() {
+		if (lastClip != null && lastClip.isOpen()) {
+			lastClip.stop();
+			lastClip.close();
+		}
 	}
 }
