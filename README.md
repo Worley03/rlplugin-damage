@@ -1,5 +1,5 @@
 # Damage Sounds
-A simple plugin that plays custom sounds when the player takes damage at the desired amount.
+A simple plugin that plays custom sounds when the player takes a set amount of damage.
 
 In order to play custom sounds, place a .WAV file inside of .runelite/damagesounds/
 
