@@ -10,7 +10,7 @@ public interface DamageSoundsConfig extends Config
 	@ConfigItem(
 			keyName = "volume",
 			name = "Volume",
-			description = "Adjust the volume of the sounds.",
+			description = "Adjust the volume of all sounds.",
 			position = 1
 	)
 	default int volume()
@@ -21,7 +21,7 @@ public interface DamageSoundsConfig extends Config
 	@ConfigItem(
 			keyName = "soundFiles",
 			name = "Sound Files",
-			description = "List of sounds with damage thresholds (format: soundFileName:threshold, ...)",
+			description = "FORMAT: soundfile1.wav:10,soundfile2.wav:20",
 			position = 2
 	)
 	default String soundFiles()
