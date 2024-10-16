@@ -8,6 +8,8 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.sound.sampled.*;
@@ -20,14 +22,11 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 
-import lombok.extern.slf4j.Slf4j;
-
 @PluginDescriptor(
 		name = "Damage Sounds",
 		description = "Plays custom sounds based on the damage you take.",
 		tags = {"combat", "sound", "damage"}
 )
-@Slf4j
 public class DamageSoundsPlugin extends Plugin {
 
 	@Inject
@@ -36,11 +35,10 @@ public class DamageSoundsPlugin extends Plugin {
 	@Inject
 	private DamageSoundsConfig config;
 
+	private static final Logger log = LoggerFactory.getLogger(DamageSoundsPlugin.class);
+
 	// Map to store sound files with their corresponding damage thresholds
 	private Map<String, Integer> soundMap = new HashMap<>();
-
-	// Reference to the last played Clip to close it before playing a new one
-	private Clip lastClip;
 
 	@Override
 	protected void startUp() throws Exception {
@@ -50,7 +48,7 @@ public class DamageSoundsPlugin extends Plugin {
 		// Create directory if it doesn't exist
 		if (!java.nio.file.Files.exists(damagesoundsDir)) {
 			java.nio.file.Files.createDirectories(damagesoundsDir);
-			log.debug("Created damagesounds directory: {}", damagesoundsDir);
+			log.debug("Created damagesounds directory: {}", damagesoundsDir.toString());
 		}
 
 		// Parse sound files from the config into the sound map
@@ -64,8 +62,7 @@ public class DamageSoundsPlugin extends Plugin {
 
 	@Override
 	protected void shutDown() throws Exception {
-		// Close the last played Clip on shutdown
-		closeLastClip();
+		// Any shutdown or cleanup logic if necessary
 	}
 
 	// Listener for config changes related to sound files
@@ -127,6 +124,8 @@ public class DamageSoundsPlugin extends Plugin {
 
 	// Plays a custom sound file based on its name and the configured volume
 	private void playCustomSound(String soundFileName, int volume) {
+		AudioInputStream audioStream = null;
+		Clip clip = null;
 		try {
 			// First, try to find the custom sound in the user's damagesounds directory
 			Path customSoundPath = Paths.get(System.getProperty("user.home"), ".runelite", "damagesounds", soundFileName);
@@ -136,26 +135,46 @@ public class DamageSoundsPlugin extends Plugin {
 
 			if (customSoundFile.exists()) {
 				// Play the custom sound file if found
-				playClip(AudioSystem.getAudioInputStream(customSoundFile), volume);
+				audioStream = AudioSystem.getAudioInputStream(customSoundFile);
+				clip = playClip(audioStream, volume);
 			} else {
 				// If the custom sound isn't found, try to load a default sound from the plugin's JAR
 				InputStream audioSrc = getClass().getResourceAsStream("/" + soundFileName);
 				if (audioSrc != null) {
 					InputStream bufferedIn = new BufferedInputStream(audioSrc);
-					playClip(AudioSystem.getAudioInputStream(bufferedIn), volume);
+					audioStream = AudioSystem.getAudioInputStream(bufferedIn);
+					clip = playClip(audioStream, volume);
 				} else {
 					log.debug("Sound file not found in JAR or custom directory: {}", soundFileName);
 				}
 			}
+
+			// Add a listener to close the clip after it finishes playing
+			if (clip != null) {
+				Clip finalClip = clip;
+				clip.addLineListener(event -> {
+					if (event.getType() == LineEvent.Type.STOP) {
+						finalClip.close();  // Close the clip after it finishes playing
+					}
+				});
+			}
+
 		} catch (Exception e) {
-			log.error("Error playing sound: {}", soundFileName, e);
+			log.error("Error playing sound file: {}", soundFileName, e);
+		} finally {
+			// Ensure that the AudioInputStream is closed after use
+			if (audioStream != null) {
+				try {
+					audioStream.close();
+				} catch (IOException e) {
+					log.error("Error closing AudioInputStream for sound file: {}", soundFileName, e);
+				}
+			}
 		}
 	}
 
 	// Play an audio clip with the specified volume
-	private void playClip(AudioInputStream audioStream, int volume) throws LineUnavailableException, IOException, UnsupportedAudioFileException {
-		closeLastClip(); // Close the previous clip if it is still open
-
+	private Clip playClip(AudioInputStream audioStream, int volume) throws LineUnavailableException, IOException, UnsupportedAudioFileException {
 		Clip clip = AudioSystem.getClip();
 		clip.open(audioStream);
 
@@ -166,14 +185,7 @@ public class DamageSoundsPlugin extends Plugin {
 
 		// Start playing the sound
 		clip.start();
-		lastClip = clip; // Store the reference to the current clip
-	}
 
-	// Close the last played Clip to free resources
-	private void closeLastClip() {
-		if (lastClip != null && lastClip.isOpen()) {
-			lastClip.stop();
-			lastClip.close();
-		}
+		return clip;  // Return the clip so it can be closed later
 	}
 }
